@@ -140,12 +140,14 @@ def compute_stats_from_results_file():
 def main():
     llm = prepare_model()
 
+    # score_generics()
+
     emotion_keys, means_by_emotion, stds_by_emotion = compute_stats_from_results_file()
 
     results = compute_emotion_scores_for_text(llm, "You are a true son of a bitch aren't you. I hate you!")
     for key in emotion_keys:
         z_score = (float(results[key]) - means_by_emotion[key]) / stds_by_emotion[key]
-        results[key] = f"{50 + z_score * 15:.2f}"
+        results[key] = f"{z_score:.2f}"
 
     pprint(results)
 
