@@ -1,13 +1,12 @@
-## Imports
+# Imports
 import random
 import csv
 from huggingface_hub import hf_hub_download
 from llama_cpp import Llama
 from pprint import pprint
 import numpy
-import scipy.stats
 
-test_words = [
+emotion_words = [
     "good",
     "bad",
     "sad",
@@ -19,30 +18,14 @@ test_words = [
     "bored"
 ]
 
-def prepare_model():
-    ## Define model name and file name
-    # model_name = "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF"
-    # model_file = "openhermes-2.5-mistral-7b.Q4_K_M.gguf"
 
-    ## Define model name and file name
+def load_llm_model():
+    # Define model name and file name
     model_name = "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF"
     model_file = "mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf"
 
-    ## Define model name and file name
-    # model_name = "TheBloke/Llama-2-7B-Chat-GGUF"
-    # model_file = "llama-2-7b-chat.Q8_0.gguf"
-
-    ## Use the following model_name and model_file if you have 8gb ram or less
-    # model_name = "TheBloke/Mistral-7B-OpenOrca-GGUF"
-    # model_file = "mistral-7b-openorca.Q4_K_M.gguf"
-
-    ## Use the following model_name and model_file if you have 16gb ram or less
-    # model_name = "TTheBloke/vicuna-13B-v1.5-16K-GGUF"
-    # model_file = "vicuna-13b-v1.5-16k.Q4_K_M.gguf"
-
-    ## Download the model
+    # Download the model
     model_path = hf_hub_download(model_name, filename=model_file)
-
 
     model_kwargs = {
       "n_ctx": 4096,
@@ -51,13 +34,13 @@ def prepare_model():
       "logits_all": True,
     }
 
-    ## Instantiate model from downloaded file
+    # Instantiate model from downloaded file
     llm = Llama(model_path=model_path, **model_kwargs)
 
     return llm
 
 
-def load_generics():
+def load_generic_sentence_dataset():
     with open('generics.txt', 'rt') as f:
         generic_sentences = f.read().splitlines()
 
@@ -68,45 +51,47 @@ def load_generics():
 
 
 def compute_emotion_scores_for_text(llm, text):
+    # Figure out the correct token for each of the emotion words
+    emotion_word_sequence = " ".join(emotion_words)
+    emotion_word_tokens = llm.tokenize(emotion_word_sequence.encode("utf-8"), add_bos=False)
 
-    test_sequence = " ".join(test_words)
-    test_word_tokens = llm.tokenize(test_sequence.encode("utf-8"), add_bos=False)
-
+    # Create a prompt that gets the model to predict an emotion word as its final token
     prompt = f"Please choose the emotion that best represents the following text: '{text}'\n\nEmotion: good"
     llm.reset()
     prompt_tokenized = llm.tokenize(prompt.encode("utf-8"), add_bos=True)
-    eval_res = llm.eval(prompt_tokenized)  # Res is a dictionary
-    print(text)
-    print("     Last token", llm.detokenize([llm.eval_tokens[-1]]))
-    logprobs = llm.logits_to_logprobs(llm.eval_logits)
 
+    # Process the prompt through the language model
+    llm.eval(prompt_tokenized)
+
+    # Fetch the log probabilities from the model
+    log_probabilities = llm.logits_to_logprobs(llm.eval_logits)
+
+    # For each emotional
     results = {}
-    for test_word, token in zip(test_words, test_word_tokens):
-        logprob = logprobs[-1][token]
-        actual_prob = 2.718281828459045 ** logprob
+    for emotion_word, emotion_word_token in zip(emotion_words, emotion_word_tokens):
+        log_probability = log_probabilities[-1][emotion_word_token]
 
-        print("    ", llm.detokenize([token]), f"{logprob:.1f}")
+        print("    ", llm.detokenize([emotion_word_token]), f"{log_probability:.1f}")
 
-        # results[llm.detokenize([token])] = f"{logprob:.1f}"
-        results[test_word] = logprob
+        results[emotion_word] = log_probability
 
     return results
 
 
 def score_generics():
-    llm = prepare_model()
-    generic_sentences = load_generics()
+    llm = load_llm_model()
+    generic_sentences = load_generic_sentence_dataset()
 
     with open('results.csv', 'wt') as f:
         writer = csv.writer(f)
-        writer.writerow(['Text'] + test_words)
+        writer.writerow(['Text'] + emotion_words)
 
         for text in generic_sentences:
             compute_emotion_scores_for_text(llm, text)
             row = [text]
 
             scores = compute_emotion_scores_for_text(llm, text)
-            for key in test_words:
+            for key in emotion_words:
                 row.append(scores[key])
 
             writer.writerow(row)
@@ -138,7 +123,7 @@ def compute_stats_from_results_file():
 
 
 def main():
-    llm = prepare_model()
+    llm = load_llm_model()
 
     # score_generics()
 
